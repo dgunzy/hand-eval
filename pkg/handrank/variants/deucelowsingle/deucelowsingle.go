@@ -7,22 +7,24 @@ import (
 )
 
 const (
-	// Size constants for hash tables
+	// Penalties in ascending order of badness
+	pairPenalty          = uint64(1000000)
+	twoPairPenalty       = uint64(2000000)
+	tripsPenalty         = uint64(3000000)
+	straightPenalty      = uint64(4000000)
+	flushPenalty         = uint64(5000000)
+	fullHousePenalty     = uint64(6000000)
+	quadsPenalty         = uint64(7000000)
+	straightFlushPenalty = uint64(8000000)
 
-	flushPenalty    = uint64(10000000)
-	straightPenalty = uint64(5000000)
-
-	// Number of cards in a hand
 	handSize = 5
 )
 
-// HandValue represents the strength of a hand (lower is better in 2-7)
-type HandValue uint64 // Changed to uint64 for larger range
+type HandValue uint64
 
-// HashTable contains pre-computed values for all possible hands
 type HashTable struct {
-	flushTable    []HandValue // 13-bit binary -> value
-	nonFlushTable []HandValue // 13-bit quinary -> value
+	flushTable    []HandValue
+	nonFlushTable []HandValue
 }
 
 // Initialize the lookup tables
@@ -43,25 +45,6 @@ func NewHashTable() *HashTable {
 	ht.initializeFlushTable()
 	ht.initializeNonFlushTable()
 	return ht
-}
-
-// getRankBinary converts 5 cards of the same suit to 13-bit binary
-func getRankBinary(cards []card.Card) uint16 {
-	var binary uint16
-	for _, c := range cards {
-		binary |= 1 << c.Rank() // Simplified uint cast
-	}
-	return binary
-}
-
-// getRankQuinary converts 5 cards to 13-bit quinary (base-5)
-// Each position can have 0-4 cards, requiring base-5 representation
-func getRankQuinary(cards []card.Card) uint32 {
-	counts := make([]uint8, 13)
-	for _, c := range cards {
-		counts[c.Rank()]++
-	}
-	return encodeQuinary(counts)
 }
 
 // Value returns the pre-computed value for a hand
@@ -87,11 +70,6 @@ func (ht *HashTable) Value(cards []card.Card) HandValue {
 }
 
 func (ht *HashTable) initializeFlushTable() {
-	// Initialize all values to maximum
-	for i := range ht.flushTable {
-		ht.flushTable[i] = HandValue(^uint64(0))
-	}
-
 	var generateFlushCombinations func(pos, count int, binary uint16)
 	generateFlushCombinations = func(pos, count int, binary uint16) {
 		if count == handSize {
@@ -114,7 +92,6 @@ func (ht *HashTable) initializeFlushTable() {
 func (ht *HashTable) initializeNonFlushTable() {
 	var generateCombinations func(pos int, remaining int, ranks []uint8)
 	generateCombinations = func(pos int, remaining int, ranks []uint8) {
-		// If we've placed all cards, evaluate the hand
 		if remaining == 0 {
 			index := encodeQuinary(ranks)
 			value := calculateNonFlushValue(ranks)
@@ -122,12 +99,10 @@ func (ht *HashTable) initializeNonFlushTable() {
 			return
 		}
 
-		// If we can't place all remaining cards, return
 		if pos >= 13 {
 			return
 		}
 
-		// Try placing 0 to min(4, remaining) cards at current position
 		maxCards := min(4, remaining)
 		for count := uint8(0); count <= uint8(maxCards); count++ {
 			ranks[pos] = count
@@ -140,88 +115,147 @@ func (ht *HashTable) initializeNonFlushTable() {
 	generateCombinations(0, 5, ranks)
 }
 
-// isSequential checks if a sorted slice of ranks forms a straight
+// getRankBinary converts 5 cards of the same suit to 13-bit binary
+func getRankBinary(cards []card.Card) uint16 {
+	var binary uint16
+	for _, c := range cards {
+		binary |= 1 << c.Rank()
+	}
+	return binary
+}
+
+// getRankQuinary converts 5 cards to 13-bit quinary (base-5)
+func getRankQuinary(cards []card.Card) uint32 {
+	counts := make([]uint8, 13)
+	for _, c := range cards {
+		counts[c.Rank()]++
+	}
+	return encodeQuinary(counts)
+}
+
 // isSequential checks if a sorted slice of ranks forms a straight
 func isSequential(ranks []int) bool {
 	if len(ranks) < handSize {
 		return false
 	}
+	// Since ranks are now sorted high to low, adjust comparison
 	for i := 1; i < len(ranks); i++ {
-		if ranks[i] != ranks[i-1]+1 {
+		if ranks[i-1] != ranks[i]+1 {
 			return false
 		}
 	}
 	return true
 }
 
-// calculateFlushValue returns a value for a flush hand (higher value = worse hand)
-func calculateFlushValue(binary uint16) HandValue {
-	ranks := make([]int, 0, handSize)
-	for i := uint(0); i < 13; i++ {
-		if binary&(1<<i) != 0 {
-			ranks = append(ranks, int(i))
+// getHandPattern returns penalties for pairs/trips/etc and card ranks sorted high to low
+func getHandPattern(ranks []uint8) (uint64, []int) {
+	var penalty uint64
+	rankCounts := make(map[int]int)
+	rankList := make([]int, 0)
+
+	// Count ranks and build rank list
+	for i, count := range ranks {
+		if count > 0 {
+			rankCounts[i] = int(count)
+			for j := uint8(0); j < count; j++ {
+				rankList = append(rankList, i)
+			}
 		}
 	}
 
-	// Sort ranks in ascending order
-	sort.Ints(ranks)
+	// Sort ranks high to low for 2-7 comparison
+	sort.Sort(sort.Reverse(sort.IntSlice(rankList)))
 
-	// Calculate base value
-	var value uint64
-	multiplier := uint64(1)
+	// Count pairs, trips, etc
+	pairs := 0
+	trips := 0
+	quads := 0
 
-	// Convert ranks so Ace is worst (12) and Two is best (1)
-	for _, rank := range ranks {
-		adjustedRank := (rank+11)%13 + 1
-		value += uint64(adjustedRank) * multiplier
-		multiplier *= 13
+	for _, count := range rankCounts {
+		switch count {
+		case 2:
+			pairs++
+		case 3:
+			trips++
+		case 4:
+			quads++
+		}
 	}
 
-	// Add penalties
-	value += flushPenalty
-	if isSequential(ranks) {
-		value += straightPenalty
+	// Apply penalties in order
+	if quads > 0 {
+		penalty = quadsPenalty
+	} else if trips > 0 && pairs > 0 {
+		penalty = fullHousePenalty
+	} else if trips > 0 {
+		penalty = tripsPenalty
+	} else if pairs == 2 {
+		penalty = twoPairPenalty
+	} else if pairs == 1 {
+		penalty = pairPenalty
+	}
+
+	// Check for straight
+	if isSequential(rankList) {
+		if penalty == 0 {
+			penalty = straightPenalty
+		} else if straightPenalty > penalty {
+			penalty = straightPenalty
+		}
+	}
+
+	return penalty, rankList
+}
+
+func calculateNonFlushValue(ranks []uint8) HandValue {
+	penalty, rankList := getHandPattern(ranks)
+
+	// Calculate base value from card ranks
+	var value uint64 = penalty
+	multiplier := uint64(1)
+
+	// Add values for each card, highest first
+	for _, rank := range rankList {
+		adjustedRank := rank
+		if rank == 0 { // Ace
+			adjustedRank = 13
+		}
+		value += uint64(adjustedRank) * multiplier
+		multiplier *= 14 // Use 14 to ensure unique values
 	}
 
 	return HandValue(value)
 }
 
-// calculateNonFlushValue returns a value for a non-flush hand
-func calculateNonFlushValue(ranks []uint8) HandValue {
-	cardRanks := make([]int, 0, handSize)
-	for i, count := range ranks {
-		for j := uint8(0); j < count; j++ {
-			cardRanks = append(cardRanks, i)
+func calculateFlushValue(binary uint16) HandValue {
+	ranks := make([]uint8, 13)
+	for i := uint(0); i < 13; i++ {
+		if binary&(1<<i) != 0 {
+			ranks[i] = 1
 		}
 	}
 
-	// Sort ranks in ascending order (2 is best)
-	sort.Ints(cardRanks)
+	_, rankList := getHandPattern(ranks)
 
-	// Calculate base value - lower cards are better
-	var value uint64
+	// For flushes, always add flush penalty
+	penalty := flushPenalty
+
+	// If it's also a straight, make it a straight flush
+	if isSequential(rankList) {
+		penalty = straightFlushPenalty
+	}
+
+	var value uint64 = penalty
 	multiplier := uint64(1)
 
-	// First, heavily penalize pairs/trips/etc
-	pairPenalty := uint64(1000000)
-	for i := 0; i < len(cardRanks)-1; i++ {
-		if cardRanks[i] == cardRanks[i+1] {
-			value += pairPenalty
-			pairPenalty *= 2 // Double penalty for each additional matching card
+	// Add values for each card, highest first
+	for _, rank := range rankList {
+		adjustedRank := rank
+		if rank == 0 { // Ace
+			adjustedRank = 13
 		}
-	}
-
-	// Then add card values (Ace=12 is worst, Two=1 is best)
-	for _, rank := range cardRanks {
-		// Convert rank so Ace is worst (12) and Two is best (1)
-		adjustedRank := (rank+11)%13 + 1
 		value += uint64(adjustedRank) * multiplier
-		multiplier *= 13
-	}
-
-	// Add straight penalty if needed
-	if isSequential(cardRanks) {
-		value += straightPenalty
+		multiplier *= 14
 	}
 
 	return HandValue(value)

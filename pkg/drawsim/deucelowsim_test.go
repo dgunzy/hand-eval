@@ -7,6 +7,17 @@ import (
 	"github.com/dgunzy/card/pkg/card"
 )
 
+const (
+	pairPenalty          = uint64(1000000)
+	twoPairPenalty       = uint64(2000000)
+	tripsPenalty         = uint64(3000000)
+	straightPenalty      = uint64(4000000)
+	flushPenalty         = uint64(5000000)
+	fullHousePenalty     = uint64(6000000)
+	quadsPenalty         = uint64(7000000)
+	straightFlushPenalty = uint64(8000000)
+)
+
 func TestDrawSimulator(t *testing.T) {
 	t.Run("Basic Single Card Draw", func(t *testing.T) {
 		kept := []card.Card{
@@ -23,10 +34,14 @@ func TestDrawSimulator(t *testing.T) {
 
 		fmt.Printf("\n=== Test 1: 8763(draw1) Distribution ===\n")
 		printDetailedDistribution(results)
+
+		// Verify that best hand has a lower value than worst hand
+		if results[0].HandValue >= results[len(results)-1].HandValue {
+			t.Error("Best hand should have lower value than worst hand")
+		}
 	})
 
 	t.Run("Wheel Draw", func(t *testing.T) {
-		// Drawing one to a 2345
 		kept := []card.Card{
 			card.NewCard(card.Spades, card.Two),
 			card.NewCard(card.Hearts, card.Three),
@@ -34,7 +49,7 @@ func TestDrawSimulator(t *testing.T) {
 			card.NewCard(card.Clubs, card.Five),
 		}
 		dead := []card.Card{
-			card.NewCard(card.Spades, card.Seven), // Block one seven
+			card.NewCard(card.Spades, card.Seven),
 		}
 		sim := NewSimulator(kept, dead, 1)
 		results := sim.RunSimulation(20)
@@ -42,28 +57,17 @@ func TestDrawSimulator(t *testing.T) {
 		fmt.Printf("\n=== Test 2: 2345(draw1) Distribution ===\n")
 		fmt.Printf("Looking for seven draws, one seven blocked\n")
 		printDetailedDistribution(results)
-	})
 
-	t.Run("Drawing Three Cards", func(t *testing.T) {
-		// Drawing three to a 32
-		kept := []card.Card{
-			card.NewCard(card.Spades, card.Three),
-			card.NewCard(card.Hearts, card.Two),
+		// Verify straight penalties
+		for _, result := range results {
+			if isSequential(ranks(result.Hand)) && uint64(result.HandValue) < straightPenalty {
+				t.Errorf("Found wheel straight without straight penalty: %v (Hash: %d)",
+					formatHand(result.Hand), result.HandValue)
+			}
 		}
-		dead := []card.Card{
-			card.NewCard(card.Spades, card.Four),
-			card.NewCard(card.Hearts, card.Five),
-		}
-		sim := NewSimulator(kept, dead, 3)
-		results := sim.RunSimulation(20)
-
-		fmt.Printf("\n=== Test 3: 32(draw3) Distribution ===\n")
-		fmt.Printf("Drawing three with 4♠ 5♥ dead\n")
-		printDetailedDistribution(results)
 	})
 
 	t.Run("Flush Draw Test", func(t *testing.T) {
-		// Drawing one with possible flush
 		kept := []card.Card{
 			card.NewCard(card.Spades, card.Three),
 			card.NewCard(card.Spades, card.Four),
@@ -80,14 +84,13 @@ func TestDrawSimulator(t *testing.T) {
 
 		// Verify flush penalties
 		for _, result := range results {
-			// Count spades
 			spadeCount := 0
 			for _, c := range result.Hand {
 				if c.Suit() == card.Spades {
 					spadeCount++
 				}
 			}
-			if spadeCount == 5 && result.HandValue < 200000 { // flushPenalty
+			if spadeCount == 5 && uint64(result.HandValue) < flushPenalty {
 				t.Errorf("Found flush without flush penalty: %v (Hash: %d)",
 					formatHand(result.Hand), result.HandValue)
 			}
@@ -95,7 +98,6 @@ func TestDrawSimulator(t *testing.T) {
 	})
 
 	t.Run("Straight Draw Test", func(t *testing.T) {
-		// Drawing one with possible straight
 		kept := []card.Card{
 			card.NewCard(card.Spades, card.Four),
 			card.NewCard(card.Hearts, card.Five),
@@ -112,56 +114,73 @@ func TestDrawSimulator(t *testing.T) {
 
 		// Verify straight penalties
 		for _, result := range results {
-			ranks := make([]int, 5)
-			for i, c := range result.Hand {
-				ranks[i] = int(c.Rank())
-			}
-			if isSequential(ranks) && result.HandValue < 5000000 { // straightPenalty
+			if isSequential(ranks(result.Hand)) && uint64(result.HandValue) < straightPenalty {
 				t.Errorf("Found straight without straight penalty: %v (Hash: %d)",
 					formatHand(result.Hand), result.HandValue)
 			}
 		}
 	})
 
-	t.Run("Many Dead Cards", func(t *testing.T) {
-		// Drawing two with many dead cards
+	t.Run("Pairs Test", func(t *testing.T) {
 		kept := []card.Card{
 			card.NewCard(card.Spades, card.Three),
-			card.NewCard(card.Hearts, card.Four),
+			card.NewCard(card.Hearts, card.Three),
 			card.NewCard(card.Diamonds, card.Five),
 		}
-		dead := []card.Card{
-			card.NewCard(card.Spades, card.Two),
-			card.NewCard(card.Hearts, card.Two),
-			card.NewCard(card.Diamonds, card.Two),
-			card.NewCard(card.Clubs, card.Two), // All twos dead
-			card.NewCard(card.Spades, card.Six),
-			card.NewCard(card.Hearts, card.Six),
-			card.NewCard(card.Diamonds, card.Six), // Most sixes dead
-		}
+		dead := []card.Card{}
 		sim := NewSimulator(kept, dead, 2)
 		results := sim.RunSimulation(20)
 
-		fmt.Printf("\n=== Test 6: 345(draw2) Distribution ===\n")
-		fmt.Printf("Drawing with all 2s and most 6s dead\n")
+		fmt.Printf("\n=== Test 6: 335(draw2) Distribution ===\n")
+		fmt.Printf("Testing pair evaluations\n")
 		printDetailedDistribution(results)
+
+		// Verify pair penalties
+		for _, result := range results {
+			if hasPair(ranks(result.Hand)) && uint64(result.HandValue) < pairPenalty {
+				t.Errorf("Found pair without pair penalty: %v (Hash: %d)",
+					formatHand(result.Hand), result.HandValue)
+			}
+		}
 	})
 }
 
-// Helper function to check if ranks form a sequential straight
+// Helper functions
+
+func ranks(hand []card.Card) []int {
+	ranks := make([]int, len(hand))
+	for i, c := range hand {
+		ranks[i] = int(c.Rank())
+	}
+	return ranks
+}
+
+func hasPair(ranks []int) bool {
+	count := make(map[int]int)
+	for _, r := range ranks {
+		count[r]++
+		if count[r] > 1 {
+			return true
+		}
+	}
+	return false
+}
+
 func isSequential(ranks []int) bool {
-	// First sort the ranks
-	for i := 0; i < len(ranks)-1; i++ {
-		for j := i + 1; j < len(ranks); j++ {
-			if ranks[i] > ranks[j] {
-				ranks[i], ranks[j] = ranks[j], ranks[i]
+	if len(ranks) < 5 {
+		return false
+	}
+	sorted := make([]int, len(ranks))
+	copy(sorted, ranks)
+	for i := 0; i < len(sorted)-1; i++ {
+		for j := i + 1; j < len(sorted); j++ {
+			if sorted[i] > sorted[j] {
+				sorted[i], sorted[j] = sorted[j], sorted[i]
 			}
 		}
 	}
-
-	// Check if they're sequential
-	for i := 1; i < len(ranks); i++ {
-		if ranks[i] != ranks[i-1]+1 {
+	for i := 1; i < len(sorted); i++ {
+		if sorted[i] != sorted[i-1]+1 {
 			return false
 		}
 	}
@@ -174,35 +193,46 @@ func printDetailedDistribution(results []SimulationResult) {
 		return
 	}
 
-	fmt.Printf("\nHand Rankings (Best to Worst):\n")
-	fmt.Printf("===============================\n")
-	fmt.Printf("%-25s %-15s %-10s\n", "Hand", "Hash Value", "Percentile")
-	fmt.Printf("-----------------------------------------------\n")
+	// Header
+	fmt.Printf("\nHand Rankings (Best to Worst)\n")
+	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+	fmt.Printf("%-3s  %-25s  %-12s  %-10s\n", "Rank", "Hand", "Value", "Percentile")
+	fmt.Printf("────────────────────────────────────────────────────\n")
 
-	for _, result := range results {
-		fmt.Printf("%-25s %d\t%.1f%%\n",
+	// Print each hand with ranking
+	for i, result := range results {
+		fmt.Printf("%-3d  %-25s  %-12d  %6.1f%%\n",
+			i+1,
 			formatHand(result.Hand),
 			result.HandValue,
 			result.Percentile)
 	}
 
-	fmt.Printf("\nKey Statistics:\n")
-	fmt.Printf("Best hand:  %v (Hash: %d)\n", formatHand(results[0].Hand), results[0].HandValue)
-	fmt.Printf("Worst hand: %v (Hash: %d)\n",
+	// Summary statistics with clear separation
+	fmt.Printf("\nSummary Statistics\n")
+	fmt.Printf("━━━━━━━━━━━━━━━━━\n")
+	fmt.Printf("Best Hand:       %-25s  Value: %-d\n",
+		formatHand(results[0].Hand),
+		results[0].HandValue)
+	fmt.Printf("Worst Hand:      %-25s  Value: %-d\n",
 		formatHand(results[len(results)-1].Hand),
 		results[len(results)-1].HandValue)
 
+	// Percentile markers
+	fmt.Printf("\nPercentile Distribution\n")
+	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━\n")
 	markers := []int{25, 50, 75}
 	for _, p := range markers {
 		idx := (p * len(results)) / 100
 		if idx >= len(results) {
 			idx = len(results) - 1
 		}
-		fmt.Printf("%dth percentile: %v (Hash: %d)\n",
+		fmt.Printf("%-3d%%:           %-25s  Value: %-d\n",
 			p,
 			formatHand(results[idx].Hand),
 			results[idx].HandValue)
 	}
+	fmt.Println()
 }
 
 func formatHand(hand []card.Card) string {

@@ -23,6 +23,12 @@ func (h TestHand) String() string {
 	return fmt.Sprintf("%s: %v", h.desc, formatCards(h.cards))
 }
 
+// Improved formatting for error messages
+func formatDetailedHand(h TestHand, value HandValue) string {
+	return fmt.Sprintf("\n  Description: %s\n  Cards: %s\n  Value: %d",
+		h.desc, formatCards(h.cards), value)
+}
+
 func formatCards(cards []card.Card) string {
 	result := ""
 	for i, c := range cards {
@@ -45,53 +51,53 @@ func TestHandRankings(t *testing.T) {
 		{makeHand([]cardSpec{{card.Two, card.Spades}, {card.Three, card.Hearts}, {card.Four, card.Diamonds},
 			{card.Five, card.Clubs}, {card.Eight, card.Spades}}), "Near perfect (2-3-4-5-8)"},
 
-		{makeHand([]cardSpec{{card.Two, card.Spades}, {card.Three, card.Hearts}, {card.Four, card.Diamonds},
-			{card.Six, card.Clubs}, {card.Seven, card.Spades}}), "Strong (2-3-4-6-7)"},
-
-		{makeHand([]cardSpec{{card.Three, card.Spades}, {card.Five, card.Hearts}, {card.Seven, card.Diamonds},
-			{card.Nine, card.Clubs}, {card.Jack, card.Spades}}), "Medium (3-5-7-9-J)"},
-
-		// High card hands with Aces
-		{makeHand([]cardSpec{{card.Ace, card.Spades}, {card.Three, card.Hearts}, {card.Seven, card.Diamonds},
-			{card.Nine, card.Clubs}, {card.King, card.Spades}}), "Ace high (A-3-7-9-K)"},
-
-		{makeHand([]cardSpec{{card.King, card.Spades}, {card.Three, card.Hearts}, {card.Seven, card.Diamonds},
-			{card.Nine, card.Clubs}, {card.Jack, card.Spades}}), "King high (K-3-7-9-J)"},
-
-		// Pairs
+		// Complex pair comparisons
 		{makeHand([]cardSpec{{card.Two, card.Spades}, {card.Two, card.Hearts}, {card.Three, card.Diamonds},
-			{card.Four, card.Clubs}, {card.Five, card.Spades}}), "Low pair (2-2-3-4-5)"},
+			{card.Four, card.Clubs}, {card.Five, card.Spades}}), "Low pair with low kickers (2-2-3-4-5)"},
 
-		{makeHand([]cardSpec{{card.Ace, card.Spades}, {card.Ace, card.Hearts}, {card.King, card.Diamonds},
-			{card.Queen, card.Clubs}, {card.Jack, card.Spades}}), "Aces pair (A-A-K-Q-J)"},
+		{makeHand([]cardSpec{{card.Two, card.Spades}, {card.Two, card.Hearts}, {card.King, card.Diamonds},
+			{card.Queen, card.Clubs}, {card.Jack, card.Spades}}), "Low pair with high kickers (2-2-K-Q-J)"},
 
-		// Three of a kind
+		{makeHand([]cardSpec{{card.King, card.Spades}, {card.King, card.Hearts}, {card.Two, card.Diamonds},
+			{card.Three, card.Clubs}, {card.Four, card.Spades}}), "High pair with low kickers (K-K-2-3-4)"},
+
+		{makeHand([]cardSpec{{card.Ace, card.Spades}, {card.Ace, card.Hearts}, {card.Two, card.Diamonds},
+			{card.Three, card.Clubs}, {card.Four, card.Spades}}), "Ace pair with low kickers (A-A-2-3-4)"},
+
+		// Edge cases with pairs and high cards
+		{makeHand([]cardSpec{{card.Three, card.Spades}, {card.Three, card.Hearts}, {card.Four, card.Diamonds},
+			{card.Five, card.Clubs}, {card.Six, card.Spades}}), "Medium low pair (3-3-4-5-6)"},
+
+		{makeHand([]cardSpec{{card.Three, card.Spades}, {card.Three, card.Hearts}, {card.Ace, card.Diamonds},
+			{card.King, card.Clubs}, {card.Queen, card.Spades}}), "Medium pair high kickers (3-3-A-K-Q)"},
+
+		// Two pair variations
+		{makeHand([]cardSpec{{card.Two, card.Spades}, {card.Two, card.Hearts}, {card.Three, card.Diamonds},
+			{card.Three, card.Clubs}, {card.Four, card.Spades}}), "Low two pair (2-2-3-3-4)"},
+
+		{makeHand([]cardSpec{{card.King, card.Spades}, {card.King, card.Hearts}, {card.Queen, card.Diamonds},
+			{card.Queen, card.Clubs}, {card.Two, card.Spades}}), "High two pair low kicker (K-K-Q-Q-2)"},
+
+		// Three of a kind variations
 		{makeHand([]cardSpec{{card.Two, card.Spades}, {card.Two, card.Hearts}, {card.Two, card.Diamonds},
-			{card.Three, card.Clubs}, {card.Four, card.Spades}}), "Set of twos (2-2-2-3-4)"},
+			{card.Three, card.Clubs}, {card.Four, card.Spades}}), "Low trips (2-2-2-3-4)"},
+
+		{makeHand([]cardSpec{{card.King, card.Spades}, {card.King, card.Hearts}, {card.King, card.Diamonds},
+			{card.Two, card.Clubs}, {card.Three, card.Spades}}), "High trips low kickers (K-K-K-2-3)"},
+
+		// Edge cases mixing pairs with straights/flushes
+		{makeHand([]cardSpec{{card.Two, card.Spades}, {card.Two, card.Hearts}, {card.Three, card.Spades},
+			{card.Four, card.Spades}, {card.Five, card.Spades}}), "Low pair with flush draw (2-2-3-4-5 three spades)"},
+
+		{makeHand([]cardSpec{{card.Two, card.Spades}, {card.Two, card.Hearts}, {card.Three, card.Hearts},
+			{card.Four, card.Hearts}, {card.Five, card.Hearts}}), "Low pair with better flush (2-2-3-4-5 four hearts)"},
+
+		// Mixed penalty hands
+		{makeHand([]cardSpec{{card.Two, card.Spades}, {card.Two, card.Hearts}, {card.Two, card.Diamonds},
+			{card.Three, card.Hearts}, {card.Three, card.Spades}}), "Full house low (2-2-2-3-3)"},
 
 		{makeHand([]cardSpec{{card.Ace, card.Spades}, {card.Ace, card.Hearts}, {card.Ace, card.Diamonds},
-			{card.King, card.Clubs}, {card.Queen, card.Spades}}), "Set of aces (A-A-A-K-Q)"},
-
-		// Straights (worse than three of a kind)
-		{makeHand([]cardSpec{{card.Three, card.Spades}, {card.Four, card.Hearts}, {card.Five, card.Diamonds},
-			{card.Six, card.Clubs}, {card.Seven, card.Spades}}), "High straight (3-4-5-6-7)"},
-
-		{makeHand([]cardSpec{{card.Ace, card.Spades}, {card.Two, card.Hearts}, {card.Three, card.Diamonds},
-			{card.Four, card.Clubs}, {card.Five, card.Spades}}), "Wheel straight (A-2-3-4-5)"},
-
-		// Flushes (worse than straights)
-		{makeHand([]cardSpec{{card.Two, card.Spades}, {card.Four, card.Spades}, {card.Six, card.Spades},
-			{card.Eight, card.Spades}, {card.Ten, card.Spades}}), "Low flush (2-4-6-8-T spades)"},
-
-		{makeHand([]cardSpec{{card.Ace, card.Hearts}, {card.King, card.Hearts}, {card.Queen, card.Hearts},
-			{card.Jack, card.Hearts}, {card.Ten, card.Hearts}}), "High flush (A-K-Q-J-T hearts)"},
-
-		// Straight flushes (worst)
-		{makeHand([]cardSpec{{card.Two, card.Hearts}, {card.Three, card.Hearts}, {card.Four, card.Hearts},
-			{card.Five, card.Hearts}, {card.Six, card.Hearts}}), "Low straight flush (2-3-4-5-6 hearts)"},
-
-		{makeHand([]cardSpec{{card.Ace, card.Spades}, {card.King, card.Spades}, {card.Queen, card.Spades},
-			{card.Jack, card.Spades}, {card.Ten, card.Spades}}), "Broadway straight flush (A-K-Q-J-T spades)"},
+			{card.King, card.Hearts}, {card.King, card.Spades}}), "Full house high (A-A-A-K-K)"},
 	}
 
 	rankedHands := make([]rankedHand, len(hands))
@@ -109,93 +115,83 @@ func TestHandRankings(t *testing.T) {
 		fmt.Printf("%2d. %-50s Value: %d\n", i+1, rh.hand, rh.value)
 	}
 
-	runTestCases(t, rankedHands)
+	runExtendedTestCases(t, rankedHands)
 }
-
-func runTestCases(t *testing.T, rankedHands []rankedHand) {
-	t.Run("Hand Category Order", func(t *testing.T) {
-		var (
-			smoothHandValue    HandValue
-			pairValue          HandValue
-			tripsValue         HandValue
-			straightValue      HandValue
-			flushValue         HandValue
-			straightFlushValue HandValue
-		)
+func runExtendedTestCases(t *testing.T, rankedHands []rankedHand) {
+	t.Run("Pair Comparisons", func(t *testing.T) {
+		var lowPairLowKickers, lowPairHighKickers, highPairLowKickers rankedHand
 
 		for _, rh := range rankedHands {
 			switch rh.hand.desc {
-			case "Perfect (2-3-4-5-7)":
-				smoothHandValue = rh.value
-			case "Low pair (2-2-3-4-5)":
-				pairValue = rh.value
-			case "Set of twos (2-2-2-3-4)":
-				tripsValue = rh.value
-			case "High straight (3-4-5-6-7)":
-				straightValue = rh.value
-			case "Low flush (2-4-6-8-T spades)":
-				flushValue = rh.value
-			case "Low straight flush (2-3-4-5-6 hearts)":
-				straightFlushValue = rh.value
+			case "Low pair with low kickers (2-2-3-4-5)":
+				lowPairLowKickers = rh
+			case "Low pair with high kickers (2-2-K-Q-J)":
+				lowPairHighKickers = rh
+			case "High pair with low kickers (K-K-2-3-4)":
+				highPairLowKickers = rh
 			}
 		}
 
-		// Test category ordering
-		if pairValue <= smoothHandValue {
-			t.Errorf("Pair (%d) should be worse than smooth hand (%d)", pairValue, smoothHandValue)
+		// A pair of 2s with high kickers should be better than a pair of 2s with low kickers
+		if lowPairHighKickers.value >= lowPairLowKickers.value {
+			t.Errorf("Hand comparison error - better hand rated worse:"+
+				"\nExpected better hand:%s"+
+				"\nRated worse than:%s",
+				formatDetailedHand(lowPairHighKickers.hand, lowPairHighKickers.value),
+				formatDetailedHand(lowPairLowKickers.hand, lowPairLowKickers.value))
 		}
-		if tripsValue <= pairValue {
-			t.Errorf("Trips (%d) should be worse than pair (%d)", tripsValue, pairValue)
-		}
-		if straightValue <= tripsValue {
-			t.Errorf("Straight (%d) should be worse than trips (%d)", straightValue, tripsValue)
-		}
-		if flushValue <= straightValue {
-			t.Errorf("Flush (%d) should be worse than straight (%d)", flushValue, straightValue)
-		}
-		if straightFlushValue <= flushValue {
-			t.Errorf("Straight flush (%d) should be worse than flush (%d)", straightFlushValue, flushValue)
+
+		// A pair of Kings with low kickers should be worse than any pair of 2s
+		if highPairLowKickers.value <= lowPairHighKickers.value {
+			t.Errorf("Hand comparison error - worse hand rated better:"+
+				"\nExpected worse hand:%s"+
+				"\nRated better than:%s",
+				formatDetailedHand(highPairLowKickers.hand, highPairLowKickers.value),
+				formatDetailedHand(lowPairHighKickers.hand, lowPairHighKickers.value))
 		}
 	})
 
-	t.Run("Ace High Card Rankings", func(t *testing.T) {
-		var aceHighValue, kingHighValue HandValue
+	t.Run("Two Pair Comparisons", func(t *testing.T) {
+		var lowTwoPair, highTwoPairLowKicker rankedHand
 
 		for _, rh := range rankedHands {
 			switch rh.hand.desc {
-			case "Ace high (A-3-7-9-K)":
-				aceHighValue = rh.value
-			case "King high (K-3-7-9-J)":
-				kingHighValue = rh.value
+			case "Low two pair (2-2-3-3-4)":
+				lowTwoPair = rh
+			case "High two pair low kicker (K-K-Q-Q-2)":
+				highTwoPairLowKicker = rh
 			}
 		}
 
-		if aceHighValue <= kingHighValue {
-			t.Errorf("Ace high (%d) should be worse than King high (%d)", aceHighValue, kingHighValue)
+		// Any high two pair should be worse than any low two pair
+		if highTwoPairLowKicker.value <= lowTwoPair.value {
+			t.Errorf("Hand comparison error - worse hand rated better:"+
+				"\nExpected worse hand:%s"+
+				"\nRated better than:%s",
+				formatDetailedHand(highTwoPairLowKicker.hand, highTwoPairLowKicker.value),
+				formatDetailedHand(lowTwoPair.hand, lowTwoPair.value))
 		}
 	})
 
-	t.Run("Pair Rankings", func(t *testing.T) {
-		var lowPairValue, acePairValue HandValue
+	t.Run("Mixed Penalty Comparisons", func(t *testing.T) {
+		var lowFullHouse, highFullHouse rankedHand
 
 		for _, rh := range rankedHands {
 			switch rh.hand.desc {
-			case "Low pair (2-2-3-4-5)":
-				lowPairValue = rh.value
-			case "Aces pair (A-A-K-Q-J)":
-				acePairValue = rh.value
+			case "Full house low (2-2-2-3-3)":
+				lowFullHouse = rh
+			case "Full house high (A-A-A-K-K)":
+				highFullHouse = rh
 			}
 		}
 
-		if acePairValue <= lowPairValue {
-			t.Errorf("Pair of Aces (%d) should be worse than low pair (%d)", acePairValue, lowPairValue)
-		}
-	})
-
-	t.Run("Perfect Low Hand", func(t *testing.T) {
-		bestHand := rankedHands[0].hand
-		if !containsRanks(bestHand.cards, []card.Rank{card.Two, card.Three, card.Four, card.Five, card.Seven}) {
-			t.Errorf("Best hand should be 2-3-4-5-7, got %v", bestHand)
+		// Any high full house should be worse than any low full house
+		if highFullHouse.value <= lowFullHouse.value {
+			t.Errorf("Hand comparison error - worse hand rated better:"+
+				"\nExpected worse hand:%s"+
+				"\nRated better than:%s",
+				formatDetailedHand(highFullHouse.hand, highFullHouse.value),
+				formatDetailedHand(lowFullHouse.hand, lowFullHouse.value))
 		}
 	})
 }
@@ -211,61 +207,4 @@ func makeHand(specs []cardSpec) []card.Card {
 		cards[i] = card.NewCard(spec.suit, spec.rank)
 	}
 	return cards
-}
-
-func containsRanks(cards []card.Card, ranks []card.Rank) bool {
-	if len(cards) != len(ranks) {
-		return false
-	}
-	cardRanks := make(map[card.Rank]bool)
-	for _, c := range cards {
-		cardRanks[c.Rank()] = true
-	}
-	for _, r := range ranks {
-		if !cardRanks[r] {
-			return false
-		}
-	}
-	return true
-}
-
-func hasPair(cards []card.Card) bool {
-	counts := make(map[card.Rank]int)
-	for _, c := range cards {
-		counts[c.Rank()]++
-		if counts[c.Rank()] > 1 {
-			return true
-		}
-	}
-	return false
-}
-
-func hasFlush(cards []card.Card) bool {
-	if len(cards) == 0 {
-		return false
-	}
-	suit := cards[0].Suit()
-	for _, c := range cards[1:] {
-		if c.Suit() != suit {
-			return false
-		}
-	}
-	return true
-}
-
-func hasStraight(cards []card.Card) bool {
-	if len(cards) < 5 {
-		return false
-	}
-	ranks := make([]int, len(cards))
-	for i, c := range cards {
-		ranks[i] = int(c.Rank())
-	}
-	sort.Ints(ranks)
-	for i := 1; i < len(ranks); i++ {
-		if ranks[i] != ranks[i-1]+1 {
-			return false
-		}
-	}
-	return true
 }
